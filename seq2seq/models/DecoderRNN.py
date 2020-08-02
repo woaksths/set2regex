@@ -97,9 +97,8 @@ class DecoderRNN(BaseRNN):
         output_size = input_var.size(1)
         embedded = self.embedding(input_var) # batch, seq_len, embedding_dim
         embedded = self.input_dropout(embedded) # batch, seq_len, embedding_dim
+        
         output, hidden = self.rnn(embedded, hidden) 
-        # output (batch, dec_seq_len, hidden)
-        # hidden type: tuple (num_layer, batch, hidden)
 
         attn = None
         if self.use_attention:
@@ -120,10 +119,8 @@ class DecoderRNN(BaseRNN):
         
         inputs, batch_size, max_length = self._validate_args(inputs, encoder_hidden, encoder_outputs,
                                                              function, teacher_forcing_ratio)
-        # inputs -> (batch, dec_seq_len)
-        # encoder_hidden -> (num_layer x num_dir, batch, hidden)
-        decoder_hidden = self._init_state(encoder_hidden)
-        # decoder_hidden -> if bidirecional: (num_layer, batch, 2 x hidden) else : (num_layer x num_dir, batch, hidden)
+
+        decoder_hidden = encoder_hidden
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
         decoder_outputs = []

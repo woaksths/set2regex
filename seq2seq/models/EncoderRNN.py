@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 import seq2seq
 from seq2seq.util.string_preprocess import preprocessing, get_set_lengths, get_mask, get_mask2
-
+from torch.autograd import Variable
 from .baseRNN import BaseRNN
 
 class EncoderRNN(BaseRNN):
@@ -57,22 +57,36 @@ class EncoderRNN(BaseRNN):
         
         self.rnn2 = self.rnn_cell(hidden_size*2 if self.bidirectional else hidden_size, hidden_size, n_layers,
                                  batch_first=True, bidirectional=bidirectional, dropout=dropout_p)
-        self.linear = nn.Linear(2*self.hidden_size, self.hidden_size)
+        self.linear = nn.Linear(2*6*self.hidden_size if self.bidirectional else 6*self.hidden_size,\
+                                2*self.hidden_size if self.bidirectional else self.hidden_size)
+
+    
+    def concat_pooling(self, hiddens):
+        '''
+        @param hiddens -> batch, seq_len, hidden
+        '''
+        seq_len = hiddens.size(1)
+        avg_pool = torch.sum(hiddens, dim=1) / seq_len
+        max_pool = torch.cat([torch.max(i[:], dim=0)[0].view(1,-1) for i in hiddens], dim=0)
+        last_hidden = torch.stack([hidden[-1] for hidden in hiddens],dim=0)        
+        return torch.cat([last_hidden, avg_pool, max_pool], dim=-1)
+    
         
     def forward(self, input_var, input_lengths=None):
         pos_input  = input_var[0] # batch, set_size, seq_len
         neg_input = input_var[1] # batch, set_size, seq_len 
         pos_lengths = input_lengths[0] # batch, set_size
         neg_lengths = input_lengths[1] # batch, set_size
-
+        
         batch_size = pos_input.size(0)
         set_size = pos_input.size(1)
         seq_len = pos_input.size(2)
         
-        pos_embedded = self.embedding(pos_input) # batch, set_size, seq_len, embedding_dim
+        pos_embedded = self.embedding(pos_input) # batch, set_size, seq_len, embedding_dim        
         neg_embedded = self.embedding(neg_input) # batch, set_size, seq_len, embedding_dim
         pos_embedded = pos_embedded.view(batch_size*set_size,seq_len, -1) # batch x set_size, seq_len, embedding_dim
         neg_embedded = neg_embedded.view(batch_size*set_size, seq_len, -1) # batch x set_size, seq_len ,embedding_dim 
+        
         pos_input_mask = get_mask(pos_input) # batch, set_size, seq_len
         neg_input_mask = get_mask(neg_input) # batch, set_size, seq_len 
         masking = (pos_input_mask, neg_input_mask) # masking for sequence lengths
@@ -92,8 +106,8 @@ class EncoderRNN(BaseRNN):
         
         pos_output = pos_output.view(batch_size, set_size, pos_output.size(1), -1) # batch, set_size, pos_seq_len, hidden)
         neg_output = neg_output.view(batch_size, set_size, neg_output.size(1), -1) # batch, set_size, neg_seq_len, hidden)
-        pos_set_embedded = pos_hidden[0].view(2, -1, batch_size*set_size, self.hidden_size) # num_layer(2), num_direction, batch x set_size, hidden
-        neg_set_embedded = neg_hidden[0].view(2, -1, batch_size*set_size, self.hidden_size) # num_layer(2), num_direction, batch x set_size, hidden  
+        pos_set_embedded = pos_hidden[0].view(-1, 2 if self.bidirectional else 1, batch_size*set_size, self.hidden_size) # num_layer(2), num_direction, batch x set_size, hidden
+        neg_set_embedded = neg_hidden[0].view(-1, 2 if self.bidirectional else 1, batch_size*set_size, self.hidden_size) # num_layer(2), num_direction, batch x set_size, hidden  
         # use hidden state of final_layer
         pos_set_embedded = pos_set_embedded[-1, :,:,:] # num_direction, batch x set_size, hidden
         neg_set_embedded = neg_set_embedded[-1, :,:,:] # num_direction, batch x set_size, hidden
@@ -107,21 +121,17 @@ class EncoderRNN(BaseRNN):
         
         pos_set_embedded = pos_set_embedded.view(batch_size, set_size, -1) # batch, set_size, hidden
         neg_set_embedded = neg_set_embedded.view(batch_size, set_size, -1) # batch, set_size, hidden
-        pos_set_output, pos_set_hidden = self.rnn2(pos_set_embedded) # (batch, set_size, hidden), # (num_layer*num_dir, batch, hidden) 2개 tuple 구성
+        
+        pos_set_output, pos_set_hidden = self.rnn2(pos_set_embedded) # (batch, set_size, hidden), # (num_layer*num_dir, batch, hidden) 2개 tuple 
         neg_set_output, neg_set_hidden = self.rnn2(neg_set_embedded) # (batch, set_size, hidden), # (num_later*num_dir, batch, hidden) 2개 tuple 
         
-        pos_set_last_hidden = pos_set_hidden[0] # num_layer x num_dir, batch, hidden
-        neg_set_last_hidden = neg_set_hidden[0] # num_later x num_dir, batch, hidden
-        pos_set_last_cell = pos_set_hidden[1] # num_layer x num_dir, batch, hidden
-        neg_set_last_cell = neg_set_hidden[1] # num_layer x num_dir, batch, hidden  
-        last_hidden = torch.cat((pos_set_last_hidden, neg_set_last_hidden), dim=-1) # num_layer x num_dir, batch, 2 x hidden 
-        last_cell = torch.cat((pos_set_last_cell, neg_set_last_cell), dim=-1) # num_layer x num_dir, batch, 2 x hidden 
-
-        last_hidden = self.linear(last_hidden.view(-1, self.hidden_size*2))
-        last_hidden = last_hidden.view(-1, batch_size, self.hidden_size)
-        last_cell = self.linear(last_cell.view(-1, self.hidden_size*2))
-        last_cell = last_cell.view(-1, batch_size, self.hidden_size)
-
-        hiddens = (last_hidden, last_cell)
+        pos_concat_hiddens = self.concat_pooling(pos_set_output)
+        neg_concat_hiddens= self.concat_pooling(neg_set_output)
+        
+        hiddens = torch.cat([pos_concat_hiddens, neg_concat_hiddens], dim=-1)
+        hiddens = self.linear(hiddens)
+        
+        hiddens = hiddens.view(1, batch_size, -1)
         outputs = ((pos_output, neg_output),(pos_set_output, neg_set_output))
+        hiddens = (hiddens, hiddens)
         return outputs, hiddens, masking

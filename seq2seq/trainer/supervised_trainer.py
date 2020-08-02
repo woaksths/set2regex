@@ -99,7 +99,7 @@ class SupervisedTrainer(object):
         avg_train_losses = []
         # to track the average validtation loss per epoch as the model trains
         avg_valid_losses = []
-        early_stopping = EarlyStopping(patience = 7, verbose=True)
+        early_stopping = EarlyStopping(patience = 15, verbose=True)
         
         for epoch in range(start_epoch, n_epochs + 1):
             log.debug("Epoch: %d, Step: %d" % (epoch, step))
