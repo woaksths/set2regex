@@ -200,6 +200,11 @@ class SupervisedTrainer(object):
                 self.optimizer.update(dev_loss, epoch)
                 if accuracy > best_acc:
                     log.info('accuracy increased >> best_accuracy{}, current_accuracy{}'.format(accuracy, best_acc))
+                    Checkpoint(model=model,
+                               optimizer=self.optimizer,
+                               epoch=epoch, step=step,
+                               input_vocab=self.input_vocab,
+                               output_vocab=self.output_vocab).save(self.expt_dir +'/best_accuracy')
                     best_acc = accuracy
                 model.train(mode=True)
             else:

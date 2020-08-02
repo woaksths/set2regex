@@ -46,6 +46,6 @@ class EarlyStopping:
                 print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
             
             Checkpoint(model=model, optimizer=optimizer, epoch=epoch, step=step,
-                       input_vocab=input_vocab, output_vocab=output_vocab).save(expt_dir +'/best_model')
+                       input_vocab=input_vocab, output_vocab=output_vocab).save(expt_dir +'/lowest_loss')
             self.counter = 0
 

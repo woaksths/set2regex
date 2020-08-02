@@ -131,7 +131,7 @@ else:
         optimizer.set_scheduler(scheduler)
     expt_dir = opt.expt_dir + '_hidden_{}'.format(hidden_size)
     # train
-    t = SupervisedTrainer(loss=loss, batch_size=2,
+    t = SupervisedTrainer(loss=loss, batch_size=64,
                           checkpoint_every=1800,
                           print_every=100, expt_dir=expt_dir, input_vocab=input_vocab, output_vocab=output_vocab)
     
