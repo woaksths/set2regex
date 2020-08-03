@@ -82,11 +82,11 @@ class DecoderRNN(BaseRNN):
         self.attn_mode = attn_mode
         self.eos_id = eos_id
         self.sos_id = sos_id
-
         self.init_input = None
         self.masking= None
-        self.input_dropout_p= input_dropout_p
+
         self.embedding = nn.Embedding(self.output_size, self.hidden_size)
+        
         if use_attention:
             self.attention = Attention(self.hidden_size, attn_mode)
 
@@ -95,8 +95,8 @@ class DecoderRNN(BaseRNN):
     def forward_step(self, input_var, hidden, encoder_outputs, function):
         batch_size = input_var.size(0)
         output_size = input_var.size(1)
-        embedded = self.embedding(input_var) # batch, seq_len, embedding_dim
-        embedded = self.input_dropout(embedded) # batch, seq_len, embedding_dim
+        embedded = self.embedding(input_var)
+        embedded = self.input_dropout(embedded)
         
         output, hidden = self.rnn(embedded, hidden) 
 
@@ -104,10 +104,11 @@ class DecoderRNN(BaseRNN):
         if self.use_attention:
             self.attention.set_mask(self.masking)
             output, attn = self.attention(output, encoder_outputs)
-
+            
         predicted_softmax = function(self.out(output.contiguous().view(-1, self.hidden_size)), dim=1).view(batch_size, output_size, -1)
         return predicted_softmax, hidden, attn
 
+    
     def forward(self, inputs=None, encoder_hidden=None, encoder_outputs=None,
                     function=F.log_softmax, teacher_forcing_ratio=0, masking=None):
         ret_dict = dict()
@@ -119,8 +120,8 @@ class DecoderRNN(BaseRNN):
         
         inputs, batch_size, max_length = self._validate_args(inputs, encoder_hidden, encoder_outputs,
                                                              function, teacher_forcing_ratio)
-
-        decoder_hidden = encoder_hidden
+        
+        decoder_hidden = self._init_state(encoder_hidden)
         use_teacher_forcing = True if random.random() < teacher_forcing_ratio else False
 
         decoder_outputs = []
@@ -147,7 +148,6 @@ class DecoderRNN(BaseRNN):
             decoder_input = inputs[:, :-1] #(batch, seq_len)
             decoder_output, decoder_hidden, attn = self.forward_step(decoder_input, decoder_hidden, encoder_outputs,
                                                                      function=function)
-            
             for di in range(decoder_output.size(1)):
                 step_output = decoder_output[:, di, :]
                 if attn is not None:

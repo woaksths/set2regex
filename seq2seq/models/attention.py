@@ -71,9 +71,11 @@ class Attention(nn.Module):
         encoder_hiddens_temp = encoder_hiddens_temp.transpose(1,2)
         attn = torch.bmm(dec_hidden, encoder_hiddens_temp)
         attn = attn.view(batch_size, -1, set_size, enc_len)
+        
         if mask is not None:
             mask = mask.unsqueeze(1)
             attn = attn.data.masked_fill(mask, -float('inf'))
+
         attn = torch.softmax(attn, dim=-1)
         attn_output = attn
         encoder_hiddens = encoder_hiddens.reshape(batch_size*set_size, enc_len, -1)
@@ -92,53 +94,31 @@ class Attention(nn.Module):
     
     
     def forward(self, dec_hidden, context):
-        # context => ((pos_output, neg_output),(pos_set_output, neg_set_output))
-        # pos_output => batch, set_size, pos_seq_len, hidden
-        # neg_output => batch, set_size, neg_seq_len, hidden
-        # pos_set_output => batch, set_size, hidden
-        # neg_set_output => batch, set_size, hidden
+        # context => batch, set_size, pos_seq_len, hidden
         # dec_hidde => batch, dec_len, hidden
-
-        self.mask1 = self.mask1[:, :, :context[0][0].size(2)]
-        self.mask2 = self.mask2[:, :, :context[0][1].size(2)]
+        self.mask = self.mask[:, :, :context.size(2)]
         batch_size = dec_hidden.size(0)
         dec_len = dec_hidden.size(1)
-        hidden = dec_hidden.size(2)
+        set_size = context.size(1)
+        hidden_size = dec_hidden.size(2)
         output = None
         attn_set = None
 
         if self.attn_mode: # attention both pos and neg samples            
-            pos_c_t, pos_attn1 = self.first_attention( dec_hidden, context[0][0], self.mask1)
-            neg_c_t, neg_attn1 = self.first_attention( dec_hidden, context[0][1], self.mask2)
-            pos_attn2 = self.second_attention(dec_hidden, context[1][0])
-            neg_attn2 = self.second_attention(dec_hidden, context[1][1])
-            attn_set = ((pos_attn1,neg_attn1),(pos_attn2, neg_attn2))
-
-            pos_attn2 = pos_attn2.unsqueeze(2)
-            pos_attn2 = pos_attn2.reshape(pos_attn2.size(0)*pos_attn2.size(1), 1, -1)
-            pos_c_t = pos_c_t.reshape(pos_c_t.size(0)*pos_c_t.size(1), pos_c_t.size(2), -1)
-            pos_combined_c_t = torch.bmm(pos_attn2, pos_c_t)
-            pos_combined_c_t = pos_combined_c_t.squeeze(1)
-            pos_combined_c_t = pos_combined_c_t.reshape(batch_size, dec_len, hidden)
-            
-            neg_attn2 = neg_attn2.unsqueeze(2)
-            neg_attn2 = neg_attn2.reshape(neg_attn2.size(0)*neg_attn2.size(1), 1, -1)
-            neg_c_t = neg_c_t.reshape(neg_c_t.size(0)*neg_c_t.size(1), neg_c_t.size(2), -1)
-            neg_combined_c_t = torch.bmm(neg_attn2, neg_c_t)
-            neg_combined_c_t = neg_combined_c_t.squeeze(1)
-            neg_combined_c_t = neg_combined_c_t.reshape(batch_size, dec_len, hidden)
-            combined = torch.cat((pos_combined_c_t, neg_combined_c_t, dec_hidden), dim=-1)
-            output = torch.tanh(self.linear_out(combined.view(-1, 3*hidden))).view(batch_size, -1, hidden)
+            pass
         else: # attention only pos samples
-            pos_c_t, pos_attn1 = self.first_attention(dec_hidden, context[0][0], self.mask1)
-            pos_attn2 = self.second_attention(dec_hidden, context[1][0])
-            attn_set = (pos_attn1, pos_attn2)
-            pos_attn2 = pos_attn2.unsqueeze(2) 
-            pos_attn2 = pos_attn2.reshape(pos_attn2.size(0)*pos_attn2.size(1), 1, -1) 
-            pos_c_t = pos_c_t.reshape(pos_c_t.size(0)*pos_c_t.size(1), pos_c_t.size(2), -1) 
-            combined_c_t = torch.bmm(pos_attn2, pos_c_t)
-            combined_c_t = combined_c_t.squeeze(1)
-            combined_c_t = combined_c_t.reshape(batch_size, dec_len, hidden)
-            combined = torch.cat((combined_c_t, dec_hidden), dim=-1)
-            output = torch.tanh(self.linear_out(combined.view(-1, 2*hidden))).view(batch_size, -1, hidden)
+            c_t, attn = self.first_attention(dec_hidden, context, self.mask)
+            
+            dec_hidden = dec_hidden.reshape(batch_size*dec_len, 1, hidden_size)
+            c_t_temp = c_t.reshape(batch_size*dec_len, set_size, -1).transpose(1,2)
+            attn2 = torch.bmm(dec_hidden, c_t_temp)
+            attn2 = attn2.squeeze(1).view(batch_size, dec_len, -1)
+            attn_set = (attn, attn2)
+            attn2 = attn2.reshape(batch_size*dec_len, 1, set_size)
+            c_t = c_t.reshape(batch_size*dec_len, set_size, -1)
+            c_t_2 = torch.bmm(attn2, c_t).squeeze(1)
+            c_t_2 = c_t_2.reshape(batch_size, dec_len, -1)
+            dec_hidden = dec_hidden.reshape(batch_size, dec_len, -1)
+            combined = torch.cat((c_t_2, dec_hidden), dim=-1)
+            output = torch.tanh(self.linear_out(combined.view(-1, 2*hidden_size))).view(batch_size, -1, hidden_size)
         return output, attn_set
