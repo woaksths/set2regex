@@ -1,5 +1,5 @@
 ## Model architecture
-![ex_screenshot](./model_version3.JPG)
+![ex_screenshot](../assets/model_version3.JPG)
 ## Result
 - base model (seq2seq + attn)
 
