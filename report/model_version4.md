@@ -1,5 +1,5 @@
 ## Model architecture
-![ex_screenshot](./model_version4.JPG)
+![ex_screenshot](../assets/model_version4.JPG)
 
 - our model( bidirectional + concat-pooling +attention(only positive samples))
 
