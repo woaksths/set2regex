@@ -1,6 +1,15 @@
 ## Model architecture
 ![ex_screenshot](../assets/model_version3.JPG)
 ## Result
+- base model (seq2seq)
+
+|   |string equal|dfa equal|membership equal|total|
+|------|---|---|---|---|
+|star0|1105|0|133|61.9%|
+|star1|357|106|265|36.4%|
+|star2|191|72|247|25.5%|
+|star3|88|64|144|14.8%|
+
 - base model (seq2seq + attn)
 
 |   |string equal|dfa equal|membership equal|total|
